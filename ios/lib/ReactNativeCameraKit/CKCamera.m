@@ -17,7 +17,6 @@
 #import "RCTConvert.h"
 #endif
 
-
 #import "CKCamera.h"
 #import "CKCameraOverlayView.h"
 #import "CKGalleryManager.h"
@@ -164,6 +163,8 @@ RCT_ENUM_CONVERTER(CKCameraZoomMode, (@{
     if (self){
         // Create the AVCaptureSession.
         self.session = [[AVCaptureSession alloc] init];
+        
+        self.session.sessionPreset = AVCaptureSessionPresetPhoto;
         
         // Communicate with the session and other session objects on this queue.
         self.sessionQueue = dispatch_queue_create( "session queue", DISPATCH_QUEUE_SERIAL );
@@ -527,34 +528,34 @@ RCT_ENUM_CONVERTER(CKCameraZoomMode, (@{
                 capturedImage = [UIImage imageWithCGImage:imageRef scale:capturedImage.scale orientation:UIImageOrientationUp];
                 imageData = UIImageJPEGRepresentation(capturedImage, 0.85f);
                 
-                [PHPhotoLibrary requestAuthorization:^( PHAuthorizationStatus status ) {
-                    if ( status == PHAuthorizationStatusAuthorized ) {
-                        
-                        NSMutableDictionary *imageInfoDict = [[NSMutableDictionary alloc] init];
-                        
-                        NSURL *temporaryFileURL = [CKCamera saveToTmpFolder:imageData];
-                        if (temporaryFileURL) {
-                            imageInfoDict[@"uri"] = temporaryFileURL.description;
-                            imageInfoDict[@"name"] = temporaryFileURL.lastPathComponent;
-                        }
-                        imageInfoDict[@"size"] = [NSNumber numberWithInteger:imageData.length];
-                        
-                        if (capturedImage && [capturedImage isKindOfClass:[UIImage class]]) {
-                            imageInfoDict[@"width"] = [NSNumber numberWithDouble:capturedImage.size.width];
-                            imageInfoDict[@"height"] = [NSNumber numberWithDouble:capturedImage.size.height];
-                        }
-                        
-                        
-                        if (shouldSaveToCameraRoll) {
+                //Prepare image info dict
+                NSMutableDictionary *imageInfoDict = [[NSMutableDictionary alloc] init];
+
+                NSURL *temporaryFileURL = [CKCamera saveToTmpFolder:imageData];
+                if (temporaryFileURL) {
+                    imageInfoDict[@"uri"] = temporaryFileURL.description;
+                    imageInfoDict[@"name"] = temporaryFileURL.lastPathComponent;
+                }
+                imageInfoDict[@"size"] = [NSNumber numberWithInteger:imageData.length];
+
+                if (capturedImage && [capturedImage isKindOfClass:[UIImage class]]) {
+                    imageInfoDict[@"width"] = [NSNumber numberWithDouble:capturedImage.size.width];
+                    imageInfoDict[@"height"] = [NSNumber numberWithDouble:capturedImage.size.height];
+                }
+                
+                //Check if save to camera roll is set to true
+                if (shouldSaveToCameraRoll) {
+                    [PHPhotoLibrary requestAuthorization:^( PHAuthorizationStatus status ) {
+                        if ( status == PHAuthorizationStatusAuthorized ) {
                             NSData *compressedImageData = UIImageJPEGRepresentation(capturedImage, 1.0f);
-                            
+
                             [CKGalleryManager saveImageToCameraRoll:compressedImageData temporaryFileURL:temporaryFileURL block:^(BOOL success) {
                                 if (success) {
                                     NSString *localIdentifier = [CKGalleryManager getImageLocalIdentifierForFetchOptions:self.fetchOptions];
                                     if (localIdentifier) {
                                         imageInfoDict[@"id"] = localIdentifier;
                                     }
-                                    
+
                                     if (block) {
                                         block(imageInfoDict);
                                     }
@@ -563,11 +564,11 @@ RCT_ENUM_CONVERTER(CKCameraZoomMode, (@{
                                     //NSLog( @"Could not save to camera roll");
                                 }
                             }];
-                        } else if (block) {
-                            block(imageInfoDict);
                         }
-                    }
-                }];
+                    }];
+                } else if (block) {
+                    block(imageInfoDict);
+                }
                 
                 CGImageRelease(imageRef);
             }
@@ -823,6 +824,15 @@ RCT_ENUM_CONVERTER(CKCameraZoomMode, (@{
 
 #pragma mark - Frame for Scanner Settings
 
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    if (self.sessionRunning && self.dataReadingFrame) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self startAnimatingScanner:self.dataReadingFrame];
+        });
+    }
+}
+
 - (void)setScannerOptions:(NSDictionary *)scannerOptions {
     if (scannerOptions[offsetForScannerFrame]) {
         self.frameOffset = [scannerOptions[offsetForScannerFrame] floatValue];
@@ -830,7 +840,6 @@ RCT_ENUM_CONVERTER(CKCameraZoomMode, (@{
     if (scannerOptions[heightForScannerFrame]) {
         self.heightFrame = [scannerOptions[heightForScannerFrame] floatValue];
     }
-    
     if (scannerOptions[colorForFrame]) {
         UIColor *acolor = [RCTConvert UIColor:scannerOptions[colorForFrame]];
         self.frameColor = (acolor) ? acolor : [UIColor whiteColor];
@@ -839,18 +848,21 @@ RCT_ENUM_CONVERTER(CKCameraZoomMode, (@{
 
 - (void)addFrameForScanner {
     CGFloat frameWidth = self.bounds.size.width - 2 * self.frameOffset;
-    self.dataReadingFrame = [[UIView alloc] initWithFrame:CGRectMake(0, 0, frameWidth, self.heightFrame)]; //
-    self.dataReadingFrame.backgroundColor = [UIColor clearColor];
-    [self createCustomFramesForView:self.dataReadingFrame];
-    [self addSubview:self.dataReadingFrame];
-    //[self.cameraPreviewView.layer addSublayer:self.dataReadingFrame.layer];
-    self.dataReadingFrame.center = self.center;
-    
-    [self startAnimatingScanner:self.dataReadingFrame];
-    [self addVisualEffects:self.dataReadingFrame.frame];
-    
-    CGRect visibleRect = [self.previewLayer metadataOutputRectOfInterestForRect:self.dataReadingFrame.frame];
-    self.metadataOutput.rectOfInterest = visibleRect;
+    if (!self.dataReadingFrame) {
+        self.dataReadingFrame = [[UIView alloc] initWithFrame:CGRectMake(0, 0, frameWidth, self.heightFrame)]; //
+        self.dataReadingFrame.center = self.center;
+        self.dataReadingFrame.backgroundColor = [UIColor clearColor];
+        [self createCustomFramesForView:self.dataReadingFrame];
+        [self addSubview:self.dataReadingFrame];
+        
+        
+        [self startAnimatingScanner:self.dataReadingFrame];
+        
+        [self addVisualEffects:self.dataReadingFrame.frame];
+        
+        CGRect visibleRect = [self.previewLayer metadataOutputRectOfInterestForRect:self.dataReadingFrame.frame];
+        self.metadataOutput.rectOfInterest = visibleRect;
+    }
 }
 
 - (void)createCustomFramesForView:(UIView *)frameView {
@@ -917,8 +929,13 @@ RCT_ENUM_CONVERTER(CKCameraZoomMode, (@{
 }
 
 - (void)startAnimatingScanner:(UIView *)inputView {
-    self.greenScanner = [[UIView alloc] initWithFrame:CGRectMake(2, 0, inputView.frame.size.width - 4, 2)];
-    self.greenScanner.backgroundColor = [UIColor whiteColor];
+    if (!self.greenScanner) {
+        self.greenScanner = [[UIView alloc] initWithFrame:CGRectMake(2, 0, inputView.frame.size.width - 4, 2)];
+        self.greenScanner.backgroundColor = [UIColor whiteColor];
+    }
+    if (self.greenScanner.frame.origin.y != 0) {
+        [self.greenScanner setFrame:CGRectMake(2, 0, inputView.frame.size.width - 4, 2)];
+    }
     [inputView addSubview:self.greenScanner];
     [UIView animateWithDuration:3 delay:0 options:(UIViewAnimationOptionAutoreverse | UIViewAnimationOptionRepeat) animations:^{
         CGFloat middleX = inputView.frame.size.width / 2;

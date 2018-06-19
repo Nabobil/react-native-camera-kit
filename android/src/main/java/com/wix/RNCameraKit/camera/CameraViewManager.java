@@ -48,13 +48,19 @@ public class CameraViewManager extends SimpleViewManager<CameraView> {
     private static AtomicBoolean cameraReleased = new AtomicBoolean(false);
 
     private static boolean shouldScan = false;
+
     private static BarcodeScanner scanner;
     private static Camera.PreviewCallback previewCallback = new Camera.PreviewCallback() {
         @Override
-        public void onPreviewFrame(byte[] data, Camera camera) {
-            if (scanner != null) {
-                scanner.onPreviewFrame(data, camera);
-            }
+        public void onPreviewFrame(final byte[] data, final Camera camera) {
+            Utils.runOnWorkerThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (scanner != null) {
+                        scanner.onPreviewFrame(data, camera);
+                    }
+                }
+            });
         }
     };
 
@@ -137,6 +143,7 @@ public class CameraViewManager extends SimpleViewManager<CameraView> {
     }
 
     private static void releaseCamera() {
+        camera.setOneShotPreviewCallback(null);
         cameraReleased.set(true);
         camera.release();
     }
@@ -161,10 +168,12 @@ public class CameraViewManager extends SimpleViewManager<CameraView> {
                         try {
                             camera.stopPreview();
                             camera.setPreviewDisplay(cameraViews.peek().getHolder());
+                            camera.startPreview();
                             if (shouldScan) {
                                 camera.setOneShotPreviewCallback(previewCallback);
                             }
-                            camera.startPreview();
+                            cameraViews.peek().setSurfaceBgColor(Color.TRANSPARENT);
+                            cameraViews.peek().showFrame();
                         } catch (IOException | RuntimeException e) {
                             e.printStackTrace();
                         }
@@ -257,6 +266,7 @@ public class CameraViewManager extends SimpleViewManager<CameraView> {
             Camera.Size optimalSize = getOptimalPreviewSize(supportedPreviewSizes, size.x, size.y);
             Camera.Size optimalPictureSize = getOptimalPreviewSize(supportedPictureSizes, size.x, size.y);
             Camera.Parameters parameters = camera.getParameters();
+            parameters.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
             parameters.setPreviewSize(optimalSize.width, optimalSize.height);
             parameters.setPictureSize(optimalPictureSize.width, optimalPictureSize.height);
             parameters.setFlashMode(flashMode);
@@ -274,13 +284,13 @@ public class CameraViewManager extends SimpleViewManager<CameraView> {
     }
 
     public static void setBarcodeScanner() {
-        scanner = new BarcodeScanner(reactContext, previewCallback);
-        scanner.setResultHandler(new BarcodeScanner.ResultHandler() {
+        scanner = new BarcodeScanner(previewCallback, new BarcodeScanner.ResultHandler() {
             @Override
-            public void handleResult(Result rawResult) {
+            public void handleResult(Result result) {
                 WritableMap event = Arguments.createMap();
-                event.putString("codeStringValue", rawResult.getText());
-                reactContext.getJSModule(RCTEventEmitter.class).receiveEvent(cameraViews.peek().getId(), "onReadCode", event);
+                event.putString("codeStringValue", result.getText());
+                if (!cameraViews.empty())
+                    reactContext.getJSModule(RCTEventEmitter.class).receiveEvent(cameraViews.peek().getId(), "onReadCode", event);
             }
         });
     }
@@ -302,11 +312,9 @@ public class CameraViewManager extends SimpleViewManager<CameraView> {
         }
     }
 
-    @ReactProp(name = "showFrame")
+    @ReactProp(name = "showFrame", defaultBoolean = false)
     public void setFrame(CameraView view, boolean show) {
-        if (show) {
-            view.showFrame();
-        }
+        view.setShowFrame(show);
     }
 
     @ReactProp(name = "frameColor", defaultInt = Color.GREEN)
@@ -317,6 +325,11 @@ public class CameraViewManager extends SimpleViewManager<CameraView> {
     @ReactProp(name = "laserColor", defaultInt = Color.RED)
     public void setLaserColor(CameraView view, @ColorInt int color) {
         view.setLaserColor(color);
+    }
+
+    @ReactProp(name = "surfaceColor")
+    public void setSurfaceBackground(CameraView view, @ColorInt int color) {
+        view.setSurfaceBgColor(color);
     }
 
     public static synchronized Rect getFramingRectInPreview(int previewWidth, int previewHeight) {

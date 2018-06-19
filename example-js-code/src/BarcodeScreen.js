@@ -44,14 +44,13 @@ export default class CameraScreen extends Component {
         showFrame={true}
         scanBarcode={true}
         laserColor={"blue"}
+        surfaceColor={"black"}
         frameColor={"yellow"}
-       
-        //onReadCode={((event) => Alert.alert(`Qr code found ${event.nativeEvent.codeStringValue} `))} 
-        onReadCode = {((event) => this.setState({ example: CheckingScreen}))}
-        hideControls={true} 
+        onReadCode={((event) => this.setState({ example: CheckingScreen }))}
+        hideControls={true}
         // offsetForScannerFrame = {10}  
         // heightForScannerFrame = {300}  
-        colorForScannerFrame = {'blue'} 
+        colorForScannerFrame={'blue'}
       />
     );
   }
