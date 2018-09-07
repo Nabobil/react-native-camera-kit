@@ -291,15 +291,21 @@ export default class CameraScreenBase extends Component {
 
   async onCaptureImagePressed() {
     const shouldSaveToCameraRoll = !this.props.allowCaptureRetake;
-    const image = await this.camera.capture(shouldSaveToCameraRoll);
+    try {
+      const image = await this.camera.capture(shouldSaveToCameraRoll);
 
-    if (this.props.allowCaptureRetake) {
-      this.setState({ imageCaptured: image });
-    } else {
-      if (image) {
-        this.setState({ captured: true, imageCaptured: image, captureImages: _.concat(this.state.captureImages, image) });
+      if (this.props.allowCaptureRetake) {
+        this.setState({ imageCaptured: image });
+      } else {
+        if (image) {
+          this.setState({ captured: true, imageCaptured: image, captureImages: _.concat(this.state.captureImages, image) });
+        }
+        this.sendBottomButtonPressedAction('capture', false, image);
       }
-      this.sendBottomButtonPressedAction('capture', false, image);
+    } catch (error) {
+      if (this.props.onCaptureError) {
+        this.props.onCaptureError(error);
+      }
     }
   }
 
