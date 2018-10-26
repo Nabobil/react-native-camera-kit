@@ -517,19 +517,6 @@ RCT_ENUM_CONVERTER(CKCameraZoomMode, (@{
                 // The sample buffer is not retained. Create image data before saving the still image to the photo library asynchronously.
                 NSData *imageData = [AVCaptureStillImageOutput jpegStillImageNSDataRepresentation:imageDataSampleBuffer];
                 UIImage *capturedImage = [UIImage imageWithData:imageData];
-                capturedImage = [CKCamera rotateImage:capturedImage];
-
-                CGSize previewScaleSize = [CKCamera cropImageToPreviewSize:capturedImage size:self.previewLayer.bounds.size];
-                CGRect rectToCrop = CGRectMake((capturedImage.size.width-previewScaleSize.width)*0.5, (capturedImage.size.height-previewScaleSize.height)*0.5, previewScaleSize.width, previewScaleSize.height);
-
-                if (self.ratioOverlayString) {
-
-                    rectToCrop = [CKCamera cropRectForSize:rectToCrop overlayObject:self.cameraOverlayView.overlayObject];
-                }
-
-                CGImageRef imageRef = CGImageCreateWithImageInRect(capturedImage.CGImage, rectToCrop);
-                capturedImage = [UIImage imageWithCGImage:imageRef scale:capturedImage.scale orientation:UIImageOrientationUp];
-                imageData = UIImageJPEGRepresentation(capturedImage, 0.85f);
 
                 [PHPhotoLibrary requestAuthorization:^( PHAuthorizationStatus status ) {
                     if ( status == PHAuthorizationStatusAuthorized ) {
@@ -550,9 +537,7 @@ RCT_ENUM_CONVERTER(CKCameraZoomMode, (@{
 
 
                         if (shouldSaveToCameraRoll) {
-                            NSData *compressedImageData = UIImageJPEGRepresentation(capturedImage, 1.0f);
-
-                            [CKGalleryManager saveImageToCameraRoll:compressedImageData temporaryFileURL:temporaryFileURL block:^(BOOL success) {
+                            [CKGalleryManager saveImageToCameraRoll:imageData temporaryFileURL:temporaryFileURL block:^(BOOL success) {
                                 if (success) {
                                     NSString *localIdentifier = [CKGalleryManager getImageLocalIdentifierForFetchOptions:self.fetchOptions];
                                     if (localIdentifier) {
@@ -572,8 +557,6 @@ RCT_ENUM_CONVERTER(CKCameraZoomMode, (@{
                         }
                     }
                 }];
-
-                CGImageRelease(imageRef);
             }
             else {
                 //NSLog( @"Could not capture still image: %@", error );
