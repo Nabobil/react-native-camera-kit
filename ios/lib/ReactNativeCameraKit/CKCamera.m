@@ -508,7 +508,17 @@ RCT_ENUM_CONVERTER(CKCameraZoomMode, (@{
         AVCaptureConnection *connection = [self.stillImageOutput connectionWithMediaType:AVMediaTypeVideo];
 
         // Update the orientation on the still image output video connection before capturing.
-        connection.videoOrientation = self.previewLayer.connection.videoOrientation;
+        switch ([[UIDevice currentDevice] orientation]) {
+            case UIDeviceOrientationLandscapeLeft:
+                connection.videoOrientation = AVCaptureVideoOrientationLandscapeRight;
+                break;
+            case UIDeviceOrientationLandscapeRight:
+                connection.videoOrientation = AVCaptureVideoOrientationLandscapeLeft;
+                break;
+            default:
+                connection.videoOrientation = AVCaptureVideoOrientationPortrait;
+                break;
+        }
 
 
         // Capture a still image.
